@@ -1,29 +1,15 @@
-### IntelliJ IDEA ###
-out/
-!**/src/main/**/out/
-!**/src/test/**/out/
+# Ignorar binarios compilados
+*.class
 
-### Eclipse ###
-.apt_generated
-.classpath
-.factorypath
-.project
-.settings
-.springBeans
-.sts4-cache
-bin/
-!**/src/main/**/bin/
-!**/src/test/**/bin/
-
-### NetBeans ###
-/nbproject/private/
-/nbbuild/
-/dist/
-/nbdist/
-/.nb-gradle/
-
-### VS Code ###
+# Ignorar carpetas de IDEs (si usas alguno)
+.idea/
+*.iml
 .vscode/
+bin/
+out/
+target/
+build/
 
-### Mac OS ###
+# Ignorar archivos del sistema
 .DS_Store
+Thumbs.db
