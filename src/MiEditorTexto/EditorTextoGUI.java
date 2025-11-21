@@ -2,7 +2,6 @@ package MiEditorTexto;
 import com.formdev.flatlaf.FlatDarculaLaf;
 
 import javax.swing.*;
-import javax.swing.border.EmptyBorder; // Nuevo import para márgenes
 import javax.swing.event.DocumentEvent;
 import javax.swing.event.DocumentListener;
 import javax.swing.text.*;
@@ -10,8 +9,13 @@ import javax.swing.undo.CannotRedoException;
 import javax.swing.undo.CannotUndoException;
 import javax.swing.undo.UndoManager;
 import java.awt.*;
+import java.awt.datatransfer.DataFlavor;
 import java.awt.event.KeyEvent;
+import java.awt.event.MouseAdapter;
+import java.awt.event.MouseEvent;
 import java.io.*;
+import java.time.LocalTime;
+import java.util.ArrayList;
 import java.util.List; // Necesario para SwingWorker
 
 public class EditorTextoGUI extends JFrame {
@@ -41,7 +45,14 @@ public class EditorTextoGUI extends JFrame {
         textPane = new JTextPane();
         textPane.setFont(new Font("Monospaced", Font.PLAIN, 14));
         JScrollPane scrollPane = new JScrollPane(textPane);
+        textPane.setTransferHandler(new TransferHandler() {
+            public boolean canImport(TransferSupport s) {
+                return s.isDataFlavorSupported(DataFlavor.javaFileListFlavor);
+            }
+        });
         add(scrollPane, BorderLayout.CENTER);
+
+
 
         // --- MODIFICACIÓN: Barra de estado compuesta ---
         // En lugar de añadir solo el statusLabel al Sur, creamos un panel contenedor
@@ -430,20 +441,8 @@ public class EditorTextoGUI extends JFrame {
         }
     }
 
-    // Método original (mantengo pero ya no lo uso en el menú directamente)
-    private void saveFile() {
-        if (currentFile == null) {
-            saveFileAs();
-        } else {
-            try (BufferedWriter writer = new BufferedWriter(new FileWriter(currentFile))) {
-                writer.write(textPane.getText());
-                setTitle("Editor/Conversor de Texto con GUI - " + currentFile.getName());
-                JOptionPane.showMessageDialog(this, "Archivo guardado exitosamente.", "Guardar", JOptionPane.INFORMATION_MESSAGE);
-            } catch (IOException ex) {
-                JOptionPane.showMessageDialog(this, "Error al guardar el archivo: " + ex.getMessage(), "Error", JOptionPane.ERROR_MESSAGE);
-            }
-        }
-    }
+
+
 
     // --- NUEVO: Método de guardado con progreso ---
     // Este método permite cumplir con el requisito de "Actualización visible del progreso".
@@ -483,6 +482,9 @@ public class EditorTextoGUI extends JFrame {
                 // Actualizar la barra visualmente (se ejecuta en el hilo de eventos)
                 int latestValue = chunks.get(chunks.size() - 1);
                 progressLabel.setProgressValue(latestValue);
+                progressLabel.setStatusText("Guardando...");
+
+
             }
 
             @Override
@@ -533,6 +535,7 @@ public class EditorTextoGUI extends JFrame {
         public enum State {
             IDLE, WORKING, DONE, ERROR
         }
+        private ArrayList<String> logHistory = new ArrayList<>();
 
         private JLabel textLabel;
         private JProgressBar progressBar;
@@ -548,21 +551,55 @@ public class EditorTextoGUI extends JFrame {
             progressBar.setPreferredSize(new Dimension(150, 15));
             progressBar.setStringPainted(true);
             progressBar.setVisible(false); // Inicialmente oculto
+            progressBar.setIndeterminate(true);
 
             add(textLabel);
             add(progressBar);
 
             setState(State.IDLE);
+            this.addMouseListener(new MouseAdapter() {
+                @Override
+                public void mouseClicked(MouseEvent e) {
+                    showLogHistory();
+                }
+            });
         }
 
         // Requisito: Propiedades configurables (Setters)
         public void setStatusText(String text) {
+
             textLabel.setText(text);
+            logHistory.add(LocalTime.now().toString().substring(0,8) + " - " + text);
         }
+        private void showLogHistory() {
+            StringBuilder sb = new StringBuilder();
+            for(String msg : logHistory) {
+                sb.append(msg).append("\n");
+            }
+            JOptionPane.showMessageDialog(this, sb.toString(), "Log", JOptionPane.INFORMATION_MESSAGE);
+
+        }
+
+
 
         public void setProgressValue(int value) {
             progressBar.setValue(value);
+            if (currentState == State.WORKING) {
+                if (value < 30) {
+                    progressBar.setForeground(new Color(220, 50, 50));
+                } else if (value < 70) {
+                    progressBar.setForeground(new Color(255, 165, 0));
+                } else {
+                    progressBar.setForeground(new Color(50, 150, 250));
+                }
+            }
+
+        } public void setDetailedProgress(int current, int total, String unit) {
+            int percent = (int) ((current * 100.0) / total);
+            progressBar.setValue(percent);
+            progressBar.setString(current + " / " + total + " " + unit);
         }
+
 
         // Requisito: Aspecto personalizable (Estilos según estado)
         public void setState(State state) {
@@ -576,21 +613,49 @@ public class EditorTextoGUI extends JFrame {
                 case WORKING:
                     progressBar.setVisible(true);
                     progressBar.setValue(0);
-                    textLabel.setForeground(Color.BLUE); // Personalización de color
+                    textLabel.setForeground(Color.BLUE);// Personalización de color
+                    getIconForState(State.WORKING);
+
                     break;
                 case DONE:
                     progressBar.setVisible(true);
                     progressBar.setValue(100);
                     textLabel.setText("Completado");
-                    textLabel.setForeground(new Color(0, 150, 0)); // Verde oscuro
+                    textLabel.setForeground(new Color(0, 150, 0));// Verde oscuro
+                    getIconForState(State.DONE);
+
                     break;
                 case ERROR:
                     progressBar.setVisible(true);
                     textLabel.setText("Error");
                     textLabel.setForeground(Color.RED);
+                    getIconForState(State.ERROR);
+                    setError(LocalTime.now().toString());
+
                     break;
             }
+        }private void getIconForState(State state) {
+            String path = switch(state) {
+                case WORKING -> "/icons/loading.png";
+                case DONE -> "/icons/check.png";
+                case ERROR -> "/icons/error.png";
+                default -> null;
+            };
+            if (path != null) {
+                new ImageIcon(path);
+            }
+        } public void setError(String longErrorMessage) {
+            setState(State.ERROR);
+            textLabel.setText("Error crítico");
+            this.setToolTipText(longErrorMessage);
+            textLabel.setToolTipText(longErrorMessage);
+            progressBar.setToolTipText(longErrorMessage);
         }
+
+
+
+
+
     }
     // ===========================================================================
 
@@ -611,5 +676,6 @@ public class EditorTextoGUI extends JFrame {
             }
             new EditorTextoGUI().setVisible(true);
         });
+
     }
 }
