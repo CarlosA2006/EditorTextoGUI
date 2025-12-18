@@ -1,4 +1,5 @@
 package MiEditorTexto;
+
 import com.formdev.flatlaf.FlatDarculaLaf;
 
 import javax.swing.*;
@@ -29,7 +30,7 @@ enum NuiCommand {
     APLICAR_CURSIVA,
     COLOR_ROJO,
     COLOR_AZUL,
-    DICTAR_TEXTO  // Opcional
+    DICTAR_TEXTO // Opcional
 }
 
 // Interface que debe implementar la ventana para recibir órdenes
@@ -47,7 +48,8 @@ class NuiController {
 
     // "Cerebro" que interpreta el lenguaje natural
     public void processInput(String input) {
-        if (input == null || input.trim().isEmpty()) return;
+        if (input == null || input.trim().isEmpty())
+            return;
 
         String text = input.toLowerCase().trim();
         NuiCommand cmd = null;
@@ -131,8 +133,18 @@ public class EditorTextoGUI extends JFrame implements NuiListener {
 
         JLabel lblSim = new JLabel("Comando de voz:");
         JTextField txtSimulacion = new JTextField(30);
+        txtSimulacion.setToolTipText("Escribe aquí tu comando (ej. 'guardar', 'negrita') y pulsa Enter");
+
         JButton btnEnviar = new JButton("Simular");
-        JLabel lblAyuda = new JLabel("<html><small style='color:gray'>(Ej: 'guardar', 'poner negrita', 'color azul', 'dictar hola mundo')</small></html>");
+        btnEnviar.setToolTipText("Ejecutar el comando escrito");
+
+        // --- MEJORA 1: Botón de Ayuda (Heurística: Ayuda y Documentación) ---
+        JButton btnAyuda = new JButton("?");
+        btnAyuda.setToolTipText("Ver lista de comandos disponibles");
+        btnAyuda.addActionListener(e -> showHelpDialog());
+
+        JLabel lblAyuda = new JLabel(
+                "<html><small style='color:gray'>(Ej: 'guardar', 'poner negrita', 'color azul', 'dictar hola mundo')</small></html>");
 
         ActionListener sendAction = e -> {
             String command = txtSimulacion.getText();
@@ -147,6 +159,7 @@ public class EditorTextoGUI extends JFrame implements NuiListener {
         nuiPanel.add(lblSim);
         nuiPanel.add(txtSimulacion);
         nuiPanel.add(btnEnviar);
+        nuiPanel.add(btnAyuda); // Añadido
         nuiPanel.add(lblAyuda);
 
         add(nuiPanel, BorderLayout.NORTH);
@@ -177,9 +190,20 @@ public class EditorTextoGUI extends JFrame implements NuiListener {
         textPane.getDocument().addUndoableEditListener(e -> undoManager.addEdit(e.getEdit()));
 
         textPane.getDocument().addDocumentListener(new DocumentListener() {
-            @Override public void insertUpdate(DocumentEvent e) { updateStatus(); }
-            @Override public void removeUpdate(DocumentEvent e) { updateStatus(); }
-            @Override public void changedUpdate(DocumentEvent e) { updateStatus(); }
+            @Override
+            public void insertUpdate(DocumentEvent e) {
+                updateStatus();
+            }
+
+            @Override
+            public void removeUpdate(DocumentEvent e) {
+                updateStatus();
+            }
+
+            @Override
+            public void changedUpdate(DocumentEvent e) {
+                updateStatus();
+            }
         });
         updateStatus();
     }
@@ -223,7 +247,9 @@ public class EditorTextoGUI extends JFrame implements NuiListener {
                 try {
                     Document doc = textPane.getDocument();
                     doc.insertString(textPane.getCaretPosition(), payload + " ", null);
-                } catch (BadLocationException e) { e.printStackTrace(); }
+                } catch (BadLocationException e) {
+                    e.printStackTrace();
+                }
                 break;
         }
 
@@ -246,7 +272,9 @@ public class EditorTextoGUI extends JFrame implements NuiListener {
     private ImageIcon loadIcon(String path) {
         try {
             return new ImageIcon(getClass().getResource("/icons/" + path));
-        } catch (Exception e) { return null; }
+        } catch (Exception e) {
+            return null;
+        }
     }
 
     private void createMenuBar() {
@@ -281,11 +309,21 @@ public class EditorTextoGUI extends JFrame implements NuiListener {
         JMenu editMenu = new JMenu("Edición");
         JMenuItem undoItem = new JMenuItem("Deshacer", KeyEvent.VK_Z);
         undoItem.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_Z, KeyEvent.CTRL_DOWN_MASK));
-        undoItem.addActionListener(e -> { try { undoManager.undo(); } catch (CannotUndoException ex) {} });
+        undoItem.addActionListener(e -> {
+            try {
+                undoManager.undo();
+            } catch (CannotUndoException ex) {
+            }
+        });
 
         JMenuItem redoItem = new JMenuItem("Rehacer", KeyEvent.VK_Y);
         redoItem.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_Y, KeyEvent.CTRL_DOWN_MASK));
-        redoItem.addActionListener(e -> { try { undoManager.redo(); } catch (CannotRedoException ex) {} });
+        redoItem.addActionListener(e -> {
+            try {
+                undoManager.redo();
+            } catch (CannotRedoException ex) {
+            }
+        });
 
         JMenuItem cutItem = new JMenuItem("Cortar");
         cutItem.addActionListener(e -> textPane.cut());
@@ -310,7 +348,8 @@ public class EditorTextoGUI extends JFrame implements NuiListener {
         JMenuItem colorItem = new JMenuItem("Color...");
         colorItem.addActionListener(e -> {
             Color newColor = JColorChooser.showDialog(this, "Elige Color", textPane.getForeground());
-            if (newColor != null) applyColor(newColor);
+            if (newColor != null)
+                applyColor(newColor);
         });
 
         formatMenu.add(boldItem);
@@ -382,7 +421,7 @@ public class EditorTextoGUI extends JFrame implements NuiListener {
             String txt = textPane.getText();
             String find = findField.getText();
             String repl = replaceField.getText();
-            if(!find.isEmpty()) {
+            if (!find.isEmpty()) {
                 textPane.setText(txt.replace(find, repl));
             }
         }
@@ -411,7 +450,13 @@ public class EditorTextoGUI extends JFrame implements NuiListener {
                         new Timer(1000, e -> progressLabel.setState(ProgressLabel.State.IDLE)).start();
                     });
                 } catch (Exception ex) {
-                    SwingUtilities.invokeLater(() -> progressLabel.setState(ProgressLabel.State.ERROR));
+                    SwingUtilities.invokeLater(() -> {
+                        progressLabel.setState(ProgressLabel.State.ERROR);
+                        // --- MEJORA 2: Feedback de error visible ---
+                        JOptionPane.showMessageDialog(EditorTextoGUI.this,
+                                "Error al abrir el archivo:\n" + ex.getMessage(),
+                                "Error de Lectura", JOptionPane.ERROR_MESSAGE);
+                    });
                 }
             }).start();
         }
@@ -433,7 +478,7 @@ public class EditorTextoGUI extends JFrame implements NuiListener {
 
                 String content = textPane.getText();
                 try (BufferedWriter writer = new BufferedWriter(new FileWriter(currentFile))) {
-                    for (int i = 0; i <= 100; i+=5) {
+                    for (int i = 0; i <= 100; i += 5) {
                         Thread.sleep(20); // Simular escritura lenta
                         publish(i);
                     }
@@ -456,10 +501,26 @@ public class EditorTextoGUI extends JFrame implements NuiListener {
                     new Timer(2000, e -> progressLabel.setState(ProgressLabel.State.IDLE)).start();
                 } catch (Exception e) {
                     progressLabel.setState(ProgressLabel.State.ERROR);
+                    // --- MEJORA 2: Feedback de error visible en guardado ---
+                    JOptionPane.showMessageDialog(EditorTextoGUI.this,
+                            "Error crítico al guardar el archivo.",
+                            "Error de Guardado", JOptionPane.ERROR_MESSAGE);
                 }
             }
         };
         worker.execute();
+    }
+
+    // --- MEJORA 1: Implementación del diálogo de ayuda ---
+    private void showHelpDialog() {
+        String helpMsg = "<html><body><h3>Comandos de Voz Disponibles:</h3>" +
+                "<ul>" +
+                "<li><b>Archivo:</b> 'nuevo', 'abrir', 'guardar'</li>" +
+                "<li><b>Estilo:</b> 'negrita', 'cursiva'</li>" +
+                "<li><b>Color:</b> 'rojo', 'azul'</li>" +
+                "<li><b>Escritura:</b> 'dictar [texto]' (ej. 'dictar hola mundo')</li>" +
+                "</ul></body></html>";
+        JOptionPane.showMessageDialog(this, helpMsg, "Ayuda de Comandos NUI", JOptionPane.INFORMATION_MESSAGE);
     }
 
     private void saveFileAs() {
@@ -477,7 +538,10 @@ public class EditorTextoGUI extends JFrame implements NuiListener {
     // TU COMPONENTE PROGRESS LABEL (Mantenido intacto)
     // ===========================================================================
     public static class ProgressLabel extends JPanel {
-        public enum State { IDLE, WORKING, DONE, ERROR }
+        public enum State {
+            IDLE, WORKING, DONE, ERROR
+        }
+
         private JLabel textLabel;
         private JProgressBar progressBar;
         private State currentState;
@@ -493,8 +557,13 @@ public class EditorTextoGUI extends JFrame implements NuiListener {
             setState(State.IDLE);
         }
 
-        public void setStatusText(String text) { textLabel.setText(text); }
-        public void setProgressValue(int value) { progressBar.setValue(value); }
+        public void setStatusText(String text) {
+            textLabel.setText(text);
+        }
+
+        public void setProgressValue(int value) {
+            progressBar.setValue(value);
+        }
 
         public void setState(State state) {
             this.currentState = state;
