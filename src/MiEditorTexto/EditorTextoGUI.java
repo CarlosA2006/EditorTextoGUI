@@ -1,9 +1,8 @@
 package MiEditorTexto;
-
 import com.formdev.flatlaf.FlatDarculaLaf;
 
 import javax.swing.*;
-import javax.swing.border.TitledBorder;
+import javax.swing.border.EmptyBorder; // Nuevo import para márgenes
 import javax.swing.event.DocumentEvent;
 import javax.swing.event.DocumentListener;
 import javax.swing.text.*;
@@ -11,111 +10,27 @@ import javax.swing.undo.CannotRedoException;
 import javax.swing.undo.CannotUndoException;
 import javax.swing.undo.UndoManager;
 import java.awt.*;
-import java.awt.event.ActionListener;
 import java.awt.event.KeyEvent;
 import java.io.*;
-import java.util.ArrayList;
-import java.util.List;
+import java.util.List; // Necesario para SwingWorker
 
-// ======================================================================================
-// 1. CAPA DE ABSTRACCIÓN NUI (Definiciones del PDF)
-// ======================================================================================
-
-// Enum con los comandos obligatorios y opcionales
-enum NuiCommand {
-    NUEVO_DOCUMENTO,
-    ABRIR_DOCUMENTO,
-    GUARDAR_DOCUMENTO,
-    APLICAR_NEGRITA,
-    APLICAR_CURSIVA,
-    COLOR_ROJO,
-    COLOR_AZUL,
-    DICTAR_TEXTO // Opcional
-}
-
-// Interface que debe implementar la ventana para recibir órdenes
-interface NuiListener {
-    void onCommand(NuiCommand cmd, String payload);
-}
-
-// Controlador: Traduce texto natural (simulando voz) a comandos estructurados
-class NuiController {
-    private List<NuiListener> listeners = new ArrayList<>();
-
-    public void addListener(NuiListener listener) {
-        listeners.add(listener);
-    }
-
-    // "Cerebro" que interpreta el lenguaje natural
-    public void processInput(String input) {
-        if (input == null || input.trim().isEmpty())
-            return;
-
-        String text = input.toLowerCase().trim();
-        NuiCommand cmd = null;
-        String payload = "";
-
-        // Detección de palabras clave (Keywords)
-        if (text.contains("nuevo") || text.contains("borrar todo")) {
-            cmd = NuiCommand.NUEVO_DOCUMENTO;
-        } else if (text.contains("abrir") || text.contains("cargar")) {
-            cmd = NuiCommand.ABRIR_DOCUMENTO;
-        } else if (text.contains("guardar") || text.contains("salvar")) {
-            cmd = NuiCommand.GUARDAR_DOCUMENTO;
-        } else if (text.contains("negrita") || text.contains("fuerte")) {
-            cmd = NuiCommand.APLICAR_NEGRITA;
-        } else if (text.contains("cursiva") || text.contains("italica")) {
-            cmd = NuiCommand.APLICAR_CURSIVA;
-        } else if (text.contains("rojo")) {
-            cmd = NuiCommand.COLOR_ROJO;
-        } else if (text.contains("azul")) {
-            cmd = NuiCommand.COLOR_AZUL;
-        } else if (text.startsWith("dictar") || text.startsWith("escribir")) {
-            cmd = NuiCommand.DICTAR_TEXTO;
-            // Obtenemos el texto real respetando mayúsculas del input original
-            int spaceIndex = input.indexOf(" ");
-            if (spaceIndex != -1) {
-                payload = input.substring(spaceIndex + 1);
-            }
-        }
-
-        if (cmd != null) {
-            notifyListeners(cmd, payload);
-        } else {
-            System.out.println("NUI: No entendí el comando '" + text + "'");
-        }
-    }
-
-    private void notifyListeners(NuiCommand cmd, String payload) {
-        for (NuiListener listener : listeners) {
-            listener.onCommand(cmd, payload);
-        }
-    }
-}
-
-// ======================================================================================
-// 2. CLASE PRINCIPAL DEL EDITOR (Modificada para implementar NuiListener)
-// ======================================================================================
-public class EditorTextoGUI extends JFrame implements NuiListener {
+public class EditorTextoGUI extends JFrame {
 
     private JTextPane textPane;
     private JLabel statusLabel;
-    private ProgressLabel progressLabel; // Tu componente visual propio
+
+    // --- NUEVO: Referencia al componente visual propio ---
+    private ProgressLabel progressLabel;
+    // ----------------------------------------------------
+
     private UndoManager undoManager;
     private File currentFile;
 
-    // Controlador NUI
-    private NuiController nuiController;
-
     public EditorTextoGUI() {
-        super("Editor/Conversor de Texto + NUI Integrado");
+        super("Editor/Conversor de Texto con GUI");
         setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
-        setSize(950, 700);
+        setSize(900, 600); // Un poco más ancho para que quepa la barra
         setLocationRelativeTo(null);
-
-        // Inicializar NUI
-        nuiController = new NuiController();
-        nuiController.addListener(this); // Escuchamos los comandos
 
         initComponents();
         createMenuBar();
@@ -123,156 +38,45 @@ public class EditorTextoGUI extends JFrame implements NuiListener {
     }
 
     private void initComponents() {
-        // Layout principal
-        setLayout(new BorderLayout());
-
-        // --- NUEVO: Panel Superior para Simulación NUI (Ruta A) ---
-        JPanel nuiPanel = new JPanel(new FlowLayout(FlowLayout.LEFT));
-        nuiPanel.setBorder(new TitledBorder("Simulador de Voz (NUI)"));
-        nuiPanel.setBackground(new Color(60, 63, 65)); // Distinguirlo visualmente
-
-        JLabel lblSim = new JLabel("Comando de voz:");
-        JTextField txtSimulacion = new JTextField(30);
-        txtSimulacion.setToolTipText("Escribe aquí tu comando (ej. 'guardar', 'negrita') y pulsa Enter");
-
-        JButton btnEnviar = new JButton("Simular");
-        btnEnviar.setToolTipText("Ejecutar el comando escrito");
-
-        // --- MEJORA 1: Botón de Ayuda (Heurística: Ayuda y Documentación) ---
-        JButton btnAyuda = new JButton("?");
-        btnAyuda.setToolTipText("Ver lista de comandos disponibles");
-        btnAyuda.addActionListener(e -> showHelpDialog());
-
-        JLabel lblAyuda = new JLabel(
-                "<html><small style='color:gray'>(Ej: 'guardar', 'poner negrita', 'color azul', 'dictar hola mundo')</small></html>");
-
-        ActionListener sendAction = e -> {
-            String command = txtSimulacion.getText();
-            nuiController.processInput(command); // Enviamos al controlador
-            txtSimulacion.setText("");
-            txtSimulacion.requestFocus();
-        };
-
-        btnEnviar.addActionListener(sendAction);
-        txtSimulacion.addActionListener(sendAction); // Al pulsar Enter
-
-        nuiPanel.add(lblSim);
-        nuiPanel.add(txtSimulacion);
-        nuiPanel.add(btnEnviar);
-        nuiPanel.add(btnAyuda); // Añadido
-        nuiPanel.add(lblAyuda);
-
-        add(nuiPanel, BorderLayout.NORTH);
-        // ----------------------------------------------------------
-
-        // Panel Central (Editor)
         textPane = new JTextPane();
         textPane.setFont(new Font("Monospaced", Font.PLAIN, 14));
         JScrollPane scrollPane = new JScrollPane(textPane);
         add(scrollPane, BorderLayout.CENTER);
 
-        // Panel Inferior (Status + ProgressLabel)
+        // --- MODIFICACIÓN: Barra de estado compuesta ---
+        // En lugar de añadir solo el statusLabel al Sur, creamos un panel contenedor
+        // para tener el contador a la izquierda y el ProgressLabel a la derecha.
         JPanel bottomPanel = new JPanel(new BorderLayout());
         bottomPanel.setBorder(BorderFactory.createMatteBorder(1, 0, 0, 0, Color.GRAY));
 
         statusLabel = new JLabel("Caracteres: 0 | Palabras: 0 | Líneas: 0");
         statusLabel.setBorder(BorderFactory.createEmptyBorder(5, 5, 5, 5));
 
+        // Instanciamos el componente propio
         progressLabel = new ProgressLabel();
-
+        // Lo añadimos al panel inferior
         bottomPanel.add(statusLabel, BorderLayout.WEST);
         bottomPanel.add(progressLabel, BorderLayout.EAST);
 
         add(bottomPanel, BorderLayout.SOUTH);
+        // -----------------------------------------------
 
-        // Lógica de deshacer y listeners de texto
         undoManager = new UndoManager();
         textPane.getDocument().addUndoableEditListener(e -> undoManager.addEdit(e.getEdit()));
 
         textPane.getDocument().addDocumentListener(new DocumentListener() {
-            @Override
-            public void insertUpdate(DocumentEvent e) {
-                updateStatus();
-            }
-
-            @Override
-            public void removeUpdate(DocumentEvent e) {
-                updateStatus();
-            }
-
-            @Override
-            public void changedUpdate(DocumentEvent e) {
-                updateStatus();
-            }
+            @Override public void insertUpdate(DocumentEvent e) { updateStatus(); }
+            @Override public void removeUpdate(DocumentEvent e) { updateStatus(); }
+            @Override public void changedUpdate(DocumentEvent e) { updateStatus(); }
         });
         updateStatus();
     }
-
-    // ===========================================================================
-    // IMPLEMENTACIÓN DE LOS COMANDOS NUI (El "Puente")
-    // ===========================================================================
-    @Override
-    public void onCommand(NuiCommand cmd, String payload) {
-        // Feedback visual en el ProgressLabel
-        progressLabel.setState(ProgressLabel.State.WORKING);
-        progressLabel.setStatusText("Voz: " + cmd);
-
-        System.out.println("[DEBUG NUI] Ejecutando: " + cmd);
-
-        switch (cmd) {
-            case NUEVO_DOCUMENTO:
-                textPane.setText("");
-                currentFile = null;
-                setTitle("Editor - Nuevo");
-                break;
-            case ABRIR_DOCUMENTO:
-                openFile();
-                break;
-            case GUARDAR_DOCUMENTO:
-                saveFileWithProgress(); // Reutilizamos tu método con barra de progreso
-                break;
-            case APLICAR_NEGRITA:
-                applyStyle(StyleConstants.Bold);
-                break;
-            case APLICAR_CURSIVA:
-                applyStyle(StyleConstants.Italic);
-                break;
-            case COLOR_ROJO:
-                applyColor(Color.RED);
-                break;
-            case COLOR_AZUL:
-                applyColor(Color.BLUE);
-                break;
-            case DICTAR_TEXTO:
-                try {
-                    Document doc = textPane.getDocument();
-                    doc.insertString(textPane.getCaretPosition(), payload + " ", null);
-                } catch (BadLocationException e) {
-                    e.printStackTrace();
-                }
-                break;
-        }
-
-        // Restaurar estado visual tras 1.5 segundos
-        Timer t = new Timer(1500, e -> progressLabel.setState(ProgressLabel.State.IDLE));
-        t.setRepeats(false);
-        t.start();
-    }
-
-    // Método auxiliar para colores directos (NUI)
-    private void applyColor(Color c) {
-        MutableAttributeSet attrs = new SimpleAttributeSet();
-        StyleConstants.setForeground(attrs, c);
-        textPane.setCharacterAttributes(attrs, false);
-    }
-    // ===========================================================================
-
-    // --- MÉTODOS DEL EDITOR ORIGINAL (Menus, Iconos, Lógica) ---
 
     private ImageIcon loadIcon(String path) {
         try {
             return new ImageIcon(getClass().getResource("/icons/" + path));
         } catch (Exception e) {
+            // System.err.println("Error loading icon: " + path); // Comentado para no ensuciar consola
             return null;
         }
     }
@@ -280,7 +84,7 @@ public class EditorTextoGUI extends JFrame implements NuiListener {
     private void createMenuBar() {
         JMenuBar menuBar = new JMenuBar();
 
-        // --- MENU ARCHIVO ---
+        // --- Menú Archivo ---
         JMenu fileMenu = new JMenu("Archivo");
         JMenuItem openItem = new JMenuItem("Abrir", KeyEvent.VK_O);
         openItem.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_O, KeyEvent.CTRL_DOWN_MASK));
@@ -290,13 +94,17 @@ public class EditorTextoGUI extends JFrame implements NuiListener {
         JMenuItem saveItem = new JMenuItem("Guardar", KeyEvent.VK_S);
         saveItem.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_S, KeyEvent.CTRL_DOWN_MASK));
         saveItem.setIcon(loadIcon("save.png"));
-        saveItem.addActionListener(e -> saveFileWithProgress()); // Usamos la versión con progreso
+        // --- MODIFICACIÓN: Usamos saveFileWithProgress para cumplir los requisitos visuales ---
+        saveItem.addActionListener(e -> saveFileWithProgress());
 
         JMenuItem saveAsItem = new JMenuItem("Guardar como...");
+        saveAsItem.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_S, KeyEvent.CTRL_DOWN_MASK | KeyEvent.SHIFT_DOWN_MASK));
         saveAsItem.setIcon(loadIcon("save_as.png"));
         saveAsItem.addActionListener(e -> saveFileAs());
 
         JMenuItem exitItem = new JMenuItem("Salir", KeyEvent.VK_Q);
+        exitItem.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_Q, KeyEvent.CTRL_DOWN_MASK));
+        exitItem.setIcon(loadIcon("exit.png"));
         exitItem.addActionListener(e -> System.exit(0));
 
         fileMenu.add(openItem);
@@ -305,32 +113,41 @@ public class EditorTextoGUI extends JFrame implements NuiListener {
         fileMenu.addSeparator();
         fileMenu.add(exitItem);
 
-        // --- MENU EDICIÓN ---
+        // --- Menú Edición (Código original intacto) ---
         JMenu editMenu = new JMenu("Edición");
+        JMenuItem cutItem = new JMenuItem("Cortar", KeyEvent.VK_X);
+        cutItem.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_X, KeyEvent.CTRL_DOWN_MASK));
+        cutItem.setIcon(loadIcon("cut.png"));
+        cutItem.addActionListener(e -> textPane.cut());
+
+        JMenuItem copyItem = new JMenuItem("Copiar", KeyEvent.VK_C);
+        copyItem.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_C, KeyEvent.CTRL_DOWN_MASK));
+        copyItem.setIcon(loadIcon("copy.png"));
+        copyItem.addActionListener(e -> textPane.copy());
+
+        JMenuItem pasteItem = new JMenuItem("Pegar", KeyEvent.VK_V);
+        pasteItem.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_V, KeyEvent.CTRL_DOWN_MASK));
+        pasteItem.setIcon(loadIcon("paste.png"));
+        pasteItem.addActionListener(e -> textPane.paste());
+
         JMenuItem undoItem = new JMenuItem("Deshacer", KeyEvent.VK_Z);
         undoItem.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_Z, KeyEvent.CTRL_DOWN_MASK));
+        undoItem.setIcon(loadIcon("undo.png"));
         undoItem.addActionListener(e -> {
-            try {
-                undoManager.undo();
-            } catch (CannotUndoException ex) {
-            }
+            try { undoManager.undo(); } catch (CannotUndoException ex) { Toolkit.getDefaultToolkit().beep(); }
         });
 
         JMenuItem redoItem = new JMenuItem("Rehacer", KeyEvent.VK_Y);
         redoItem.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_Y, KeyEvent.CTRL_DOWN_MASK));
+        redoItem.setIcon(loadIcon("redo.png"));
         redoItem.addActionListener(e -> {
-            try {
-                undoManager.redo();
-            } catch (CannotRedoException ex) {
-            }
+            try { undoManager.redo(); } catch (CannotRedoException ex) { Toolkit.getDefaultToolkit().beep(); }
         });
 
-        JMenuItem cutItem = new JMenuItem("Cortar");
-        cutItem.addActionListener(e -> textPane.cut());
-        JMenuItem copyItem = new JMenuItem("Copiar");
-        copyItem.addActionListener(e -> textPane.copy());
-        JMenuItem pasteItem = new JMenuItem("Pegar");
-        pasteItem.addActionListener(e -> textPane.paste());
+        JMenuItem selectAllItem = new JMenuItem("Seleccionar todo", KeyEvent.VK_A);
+        selectAllItem.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_A, KeyEvent.CTRL_DOWN_MASK));
+        selectAllItem.setIcon(loadIcon("select_all.png"));
+        selectAllItem.addActionListener(e -> textPane.selectAll());
 
         editMenu.add(cutItem);
         editMenu.add(copyItem);
@@ -338,32 +155,137 @@ public class EditorTextoGUI extends JFrame implements NuiListener {
         editMenu.addSeparator();
         editMenu.add(undoItem);
         editMenu.add(redoItem);
+        editMenu.addSeparator();
+        editMenu.add(selectAllItem);
 
-        // --- MENU FORMATO ---
+        // --- Menú Transformaciones (Código original intacto) ---
+        JMenu transformMenu = new JMenu("Transformaciones");
+        JMenuItem upperCaseItem = new JMenuItem("Mayúsculas");
+        upperCaseItem.addActionListener(e -> {
+            try {
+                Document doc = textPane.getDocument();
+                String selectedText = textPane.getSelectedText();
+                if (selectedText != null && !selectedText.isEmpty()) {
+                    int start = textPane.getSelectionStart();
+                    int end = textPane.getSelectionEnd();
+                    doc.remove(start, end - start);
+                    doc.insertString(start, selectedText.toUpperCase(), null);
+                } else {
+                    String fullText = textPane.getText();
+                    textPane.setText(fullText.toUpperCase());
+                }
+            } catch (BadLocationException ex) { ex.printStackTrace(); }
+        });
+
+        JMenuItem lowerCaseItem = new JMenuItem("Minúsculas");
+        lowerCaseItem.addActionListener(e -> {
+            try {
+                Document doc = textPane.getDocument();
+                String selectedText = textPane.getSelectedText();
+                if (selectedText != null && !selectedText.isEmpty()) {
+                    int start = textPane.getSelectionStart();
+                    int end = textPane.getSelectionEnd();
+                    doc.remove(start, end - start);
+                    doc.insertString(start, selectedText.toLowerCase(), null);
+                } else {
+                    String fullText = textPane.getText();
+                    textPane.setText(fullText.toLowerCase());
+                }
+            } catch (BadLocationException ex) { ex.printStackTrace(); }
+        });
+
+        JMenuItem invertCaseItem = new JMenuItem("Invertir May/Min");
+        invertCaseItem.addActionListener(e -> {
+            try {
+                Document doc = textPane.getDocument();
+                String targetText;
+                int start = 0;
+                int end = doc.getLength();
+
+                String selectedText = textPane.getSelectedText();
+                if (selectedText != null && !selectedText.isEmpty()) {
+                    targetText = selectedText;
+                    start = textPane.getSelectionStart();
+                    end = textPane.getSelectionEnd();
+                } else {
+                    targetText = textPane.getText();
+                }
+
+                StringBuilder invertedText = new StringBuilder();
+                for (char c : targetText.toCharArray()) {
+                    if (Character.isUpperCase(c)) {
+                        invertedText.append(Character.toLowerCase(c));
+                    } else if (Character.isLowerCase(c)) {
+                        invertedText.append(Character.toUpperCase(c));
+                    } else {
+                        invertedText.append(c);
+                    }
+                }
+                doc.remove(start, end - start);
+                doc.insertString(start, invertedText.toString(), null);
+            } catch (BadLocationException ex) { ex.printStackTrace(); }
+        });
+
+        JMenuItem removeDoubleSpacesItem = new JMenuItem("Eliminar Espacios Dobles");
+        removeDoubleSpacesItem.addActionListener(e -> {
+            try {
+                Document doc = textPane.getDocument();
+                String fullText = doc.getText(0, doc.getLength());
+                String cleanedText = fullText.replaceAll(" +", " ").trim();
+                textPane.setText(cleanedText);
+            } catch (BadLocationException ex) { ex.printStackTrace(); }
+        });
+
+        transformMenu.add(upperCaseItem);
+        transformMenu.add(lowerCaseItem);
+        transformMenu.add(invertCaseItem);
+        transformMenu.add(removeDoubleSpacesItem);
+
+        // --- Menú Formato (Código original intacto) ---
         JMenu formatMenu = new JMenu("Formato");
-        JMenuItem boldItem = new JMenuItem("Negrita");
+        JMenuItem boldItem = new JMenuItem("Negrita", KeyEvent.VK_B);
+        boldItem.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_B, KeyEvent.CTRL_DOWN_MASK));
+        boldItem.setIcon(loadIcon("bold.png"));
         boldItem.addActionListener(e -> applyStyle(StyleConstants.Bold));
-        JMenuItem italicItem = new JMenuItem("Cursiva");
+
+        JMenuItem italicItem = new JMenuItem("Cursiva", KeyEvent.VK_I);
+        italicItem.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_I, KeyEvent.CTRL_DOWN_MASK));
+        italicItem.setIcon(loadIcon("italic.png"));
         italicItem.addActionListener(e -> applyStyle(StyleConstants.Italic));
-        JMenuItem colorItem = new JMenuItem("Color...");
+
+        JMenuItem underlineItem = new JMenuItem("Subrayado", KeyEvent.VK_U);
+        underlineItem.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_U, KeyEvent.CTRL_DOWN_MASK));
+        underlineItem.setIcon(loadIcon("underline.png"));
+        underlineItem.addActionListener(e -> applyStyle(StyleConstants.Underline));
+
+        JMenuItem colorItem = new JMenuItem("Color de fuente...");
+        colorItem.setIcon(loadIcon("color_text.png"));
         colorItem.addActionListener(e -> {
-            Color newColor = JColorChooser.showDialog(this, "Elige Color", textPane.getForeground());
-            if (newColor != null)
-                applyColor(newColor);
+            Color newColor = JColorChooser.showDialog(this, "Elige un Color", textPane.getForeground());
+            if (newColor != null) {
+                MutableAttributeSet attrs = new SimpleAttributeSet(textPane.getCharacterAttributes());
+                StyleConstants.setForeground(attrs, newColor);
+                textPane.setCharacterAttributes(attrs, false);
+            }
         });
 
         formatMenu.add(boldItem);
         formatMenu.add(italicItem);
+        formatMenu.add(underlineItem);
+        formatMenu.addSeparator();
         formatMenu.add(colorItem);
 
-        // --- MENU HERRAMIENTAS ---
+        // --- Menú Herramientas (Código original intacto) ---
         JMenu toolsMenu = new JMenu("Herramientas");
-        JMenuItem findItem = new JMenuItem("Buscar y Reemplazar...");
-        findItem.addActionListener(e -> showFindReplaceDialog());
-        toolsMenu.add(findItem);
+        JMenuItem findReplaceItem = new JMenuItem("Buscar y Reemplazar...", KeyEvent.VK_F);
+        findReplaceItem.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_F, KeyEvent.CTRL_DOWN_MASK));
+        findReplaceItem.setIcon(loadIcon("search.png"));
+        findReplaceItem.addActionListener(e -> showFindReplaceDialog());
+        toolsMenu.add(findReplaceItem);
 
         menuBar.add(fileMenu);
         menuBar.add(editMenu);
+        menuBar.add(transformMenu);
         menuBar.add(formatMenu);
         menuBar.add(toolsMenu);
 
@@ -373,24 +295,44 @@ public class EditorTextoGUI extends JFrame implements NuiListener {
     private void createPopupMenu() {
         JPopupMenu popupMenu = new JPopupMenu();
         JMenuItem cutPopup = new JMenuItem("Cortar");
-        cutPopup.addActionListener(e -> textPane.cut());
+        cutPopup.setIcon(loadIcon("cut.png"));
         JMenuItem copyPopup = new JMenuItem("Copiar");
-        copyPopup.addActionListener(e -> textPane.copy());
+        copyPopup.setIcon(loadIcon("copy.png"));
         JMenuItem pastePopup = new JMenuItem("Pegar");
+        pastePopup.setIcon(loadIcon("paste.png"));
+        JMenuItem selectAllPopup = new JMenuItem("Seleccionar todo");
+        selectAllPopup.setIcon(loadIcon("select_all.png"));
+
+        cutPopup.addActionListener(e -> textPane.cut());
+        copyPopup.addActionListener(e -> textPane.copy());
         pastePopup.addActionListener(e -> textPane.paste());
+        selectAllPopup.addActionListener(e -> textPane.selectAll());
 
         popupMenu.add(cutPopup);
         popupMenu.add(copyPopup);
         popupMenu.add(pastePopup);
+        popupMenu.addSeparator();
+        popupMenu.add(selectAllPopup);
+
         textPane.setComponentPopupMenu(popupMenu);
     }
 
     private void updateStatus() {
-        String text = textPane.getText();
+        String text;
+        try {
+            text = textPane.getDocument().getText(0, textPane.getDocument().getLength());
+        } catch (BadLocationException e) {
+            text = "";
+        }
         int chars = text.length();
-        String[] words = text.trim().split("\\s+");
-        int numWords = text.trim().isEmpty() ? 0 : words.length;
+        String[] words = text.split("\\s+");
+        int numWords = 0;
+        for (String word : words) {
+            if (!word.trim().isEmpty()) numWords++;
+        }
         int lines = textPane.getDocument().getDefaultRootElement().getElementCount();
+        if (chars == 0 && lines == 1) lines = 0;
+
         statusLabel.setText("Caracteres: " + chars + " | Palabras: " + numWords + " | Líneas: " + lines);
     }
 
@@ -403,84 +345,133 @@ public class EditorTextoGUI extends JFrame implements NuiListener {
         } else if (styleConstant == StyleConstants.Italic) {
             isApplied = StyleConstants.isItalic(attrs);
             StyleConstants.setItalic(attrs, !isApplied);
+        } else if (styleConstant == StyleConstants.Underline) {
+            isApplied = StyleConstants.isUnderline(attrs);
+            StyleConstants.setUnderline(attrs, !isApplied);
         }
         textPane.setCharacterAttributes(attrs, false);
     }
 
     private void showFindReplaceDialog() {
-        JPanel panel = new JPanel(new GridLayout(2, 2, 5, 5));
-        JTextField findField = new JTextField();
-        JTextField replaceField = new JTextField();
-        panel.add(new JLabel("Buscar:"));
-        panel.add(findField);
-        panel.add(new JLabel("Reemplazar:"));
-        panel.add(replaceField);
+        // (Código original intacto)
+        JPanel panel = new JPanel(new GridBagLayout());
+        GridBagConstraints gbc = new GridBagConstraints();
+        gbc.insets = new Insets(5, 5, 5, 5);
 
-        int result = JOptionPane.showConfirmDialog(this, panel, "Buscar y Reemplazar", JOptionPane.OK_CANCEL_OPTION);
+        JTextField findField = new JTextField(25);
+        JTextField replaceField = new JTextField(25);
+        JCheckBox caseSensitive = new JCheckBox("Coincidir mayúsculas/minúsculas");
+
+        gbc.gridx = 0; gbc.gridy = 0; gbc.anchor = GridBagConstraints.WEST;
+        panel.add(new JLabel("Buscar:"), gbc);
+        gbc.gridx = 1; gbc.fill = GridBagConstraints.HORIZONTAL;
+        panel.add(findField, gbc);
+
+        gbc.gridx = 0; gbc.gridy = 1; gbc.fill = GridBagConstraints.NONE;
+        panel.add(new JLabel("Reemplazar con:"), gbc);
+        gbc.gridx = 1; gbc.fill = GridBagConstraints.HORIZONTAL;
+        panel.add(replaceField, gbc);
+
+        gbc.gridx = 0; gbc.gridy = 2; gbc.gridwidth = 2; gbc.anchor = GridBagConstraints.WEST;
+        panel.add(caseSensitive, gbc);
+
+        int result = JOptionPane.showConfirmDialog(this, panel, "Buscar y Reemplazar",
+                JOptionPane.OK_CANCEL_OPTION, JOptionPane.PLAIN_MESSAGE, loadIcon("search_large.png"));
+
         if (result == JOptionPane.OK_OPTION) {
-            String txt = textPane.getText();
-            String find = findField.getText();
-            String repl = replaceField.getText();
-            if (!find.isEmpty()) {
-                textPane.setText(txt.replace(find, repl));
+            String findText = findField.getText();
+            String replaceText = replaceField.getText();
+            boolean matchCase = caseSensitive.isSelected();
+
+            if (findText != null && !findText.isEmpty()) {
+                String fullText;
+                try {
+                    fullText = textPane.getDocument().getText(0, textPane.getDocument().getLength());
+                    String searchTarget = matchCase ? fullText : fullText.toLowerCase();
+                    String findPattern = matchCase ? findText : findText.toLowerCase();
+
+                    if (searchTarget.contains(findPattern)) {
+                        String newText = textPane.getText();
+                        if (!matchCase) {
+                            newText = newText.replaceAll("(?i)" + java.util.regex.Pattern.quote(findText), java.util.regex.Matcher.quoteReplacement(replaceText));
+                        } else {
+                            newText = newText.replace(findText, replaceText);
+                        }
+                        textPane.setText(newText);
+                        JOptionPane.showMessageDialog(this, "Reemplazo completado.", "Éxito", JOptionPane.INFORMATION_MESSAGE);
+                    } else {
+                        JOptionPane.showMessageDialog(this, "Texto no encontrado.", "Buscar", JOptionPane.INFORMATION_MESSAGE);
+                    }
+
+                } catch (BadLocationException ex) {
+                    ex.printStackTrace();
+                }
             }
         }
     }
 
     private void openFile() {
         JFileChooser fileChooser = new JFileChooser();
-        if (fileChooser.showOpenDialog(this) == JFileChooser.APPROVE_OPTION) {
+        int option = fileChooser.showOpenDialog(this);
+        if (option == JFileChooser.APPROVE_OPTION) {
             currentFile = fileChooser.getSelectedFile();
-            // Simulación visual en NUI también
-            progressLabel.setState(ProgressLabel.State.WORKING);
-            progressLabel.setStatusText("Abriendo...");
-
-            new Thread(() -> {
-                try (BufferedReader reader = new BufferedReader(new FileReader(currentFile))) {
-                    textPane.setText("");
-                    String line;
-                    StyledDocument doc = textPane.getStyledDocument();
-                    while ((line = reader.readLine()) != null) {
-                        doc.insertString(doc.getLength(), line + "\n", null);
-                    }
-                    undoManager.discardAllEdits();
-                    SwingUtilities.invokeLater(() -> {
-                        setTitle("Editor - " + currentFile.getName());
-                        progressLabel.setState(ProgressLabel.State.DONE);
-                        new Timer(1000, e -> progressLabel.setState(ProgressLabel.State.IDLE)).start();
-                    });
-                } catch (Exception ex) {
-                    SwingUtilities.invokeLater(() -> {
-                        progressLabel.setState(ProgressLabel.State.ERROR);
-                        // --- MEJORA 2: Feedback de error visible ---
-                        JOptionPane.showMessageDialog(EditorTextoGUI.this,
-                                "Error al abrir el archivo:\n" + ex.getMessage(),
-                                "Error de Lectura", JOptionPane.ERROR_MESSAGE);
-                    });
+            try (BufferedReader reader = new BufferedReader(new FileReader(currentFile))) {
+                textPane.setText("");
+                String line;
+                StyledDocument doc = textPane.getStyledDocument();
+                while ((line = reader.readLine()) != null) {
+                    doc.insertString(doc.getLength(), line + "\n", null);
                 }
-            }).start();
+                undoManager.discardAllEdits();
+                setTitle("Editor/Conversor de Texto con GUI - " + currentFile.getName());
+            } catch (IOException | BadLocationException ex) {
+                JOptionPane.showMessageDialog(this, "Error al abrir el archivo: " + ex.getMessage(), "Error", JOptionPane.ERROR_MESSAGE);
+            }
         }
     }
 
+    // Método original (mantengo pero ya no lo uso en el menú directamente)
+    private void saveFile() {
+        if (currentFile == null) {
+            saveFileAs();
+        } else {
+            try (BufferedWriter writer = new BufferedWriter(new FileWriter(currentFile))) {
+                writer.write(textPane.getText());
+                setTitle("Editor/Conversor de Texto con GUI - " + currentFile.getName());
+                JOptionPane.showMessageDialog(this, "Archivo guardado exitosamente.", "Guardar", JOptionPane.INFORMATION_MESSAGE);
+            } catch (IOException ex) {
+                JOptionPane.showMessageDialog(this, "Error al guardar el archivo: " + ex.getMessage(), "Error", JOptionPane.ERROR_MESSAGE);
+            }
+        }
+    }
+
+    // --- NUEVO: Método de guardado con progreso ---
+    // Este método permite cumplir con el requisito de "Actualización visible del progreso".
+    // Simula una tarea lenta usando SwingWorker para que la barra se llene.
     private void saveFileWithProgress() {
         if (currentFile == null) {
             saveFileAs();
             return;
         }
 
+        // SwingWorker permite ejecutar tareas en segundo plano sin congelar la GUI
         SwingWorker<Void, Integer> worker = new SwingWorker<>() {
             @Override
             protected Void doInBackground() throws Exception {
+                // Actualizar estado a WORKING
                 SwingUtilities.invokeLater(() -> {
                     progressLabel.setState(ProgressLabel.State.WORKING);
                     progressLabel.setStatusText("Guardando...");
                 });
 
                 String content = textPane.getText();
+
+                // Escribimos el archivo
                 try (BufferedWriter writer = new BufferedWriter(new FileWriter(currentFile))) {
-                    for (int i = 0; i <= 100; i += 5) {
-                        Thread.sleep(20); // Simular escritura lenta
-                        publish(i);
+                    // Simulamos que tarda un poco para ver la barra (solo para demostración)
+                    for (int i = 0; i <= 100; i+=2) {
+                        Thread.sleep(10); // Simulación de trabajo
+                        publish(i); // Enviamos progreso
                     }
                     writer.write(content);
                 }
@@ -489,55 +480,56 @@ public class EditorTextoGUI extends JFrame implements NuiListener {
 
             @Override
             protected void process(List<Integer> chunks) {
-                progressLabel.setProgressValue(chunks.get(chunks.size() - 1));
+                // Actualizar la barra visualmente (se ejecuta en el hilo de eventos)
+                int latestValue = chunks.get(chunks.size() - 1);
+                progressLabel.setProgressValue(latestValue);
             }
 
             @Override
             protected void done() {
                 try {
-                    get();
+                    get(); // Verificar si hubo excepciones
+                    // Estado DONE
                     progressLabel.setState(ProgressLabel.State.DONE);
-                    setTitle("Editor - " + currentFile.getName());
-                    new Timer(2000, e -> progressLabel.setState(ProgressLabel.State.IDLE)).start();
+                    setTitle("Editor/Conversor de Texto con GUI - " + currentFile.getName());
+
+                    // Timer para volver a estado IDLE después de 2 segundos
+                    Timer t = new Timer(2000, e -> progressLabel.setState(ProgressLabel.State.IDLE));
+                    t.setRepeats(false);
+                    t.start();
+
                 } catch (Exception e) {
+                    // Estado ERROR
                     progressLabel.setState(ProgressLabel.State.ERROR);
-                    // --- MEJORA 2: Feedback de error visible en guardado ---
-                    JOptionPane.showMessageDialog(EditorTextoGUI.this,
-                            "Error crítico al guardar el archivo.",
-                            "Error de Guardado", JOptionPane.ERROR_MESSAGE);
+                    progressLabel.setStatusText("Error al guardar");
+                    e.printStackTrace();
                 }
             }
         };
+
         worker.execute();
     }
-
-    // --- MEJORA 1: Implementación del diálogo de ayuda ---
-    private void showHelpDialog() {
-        String helpMsg = "<html><body><h3>Comandos de Voz Disponibles:</h3>" +
-                "<ul>" +
-                "<li><b>Archivo:</b> 'nuevo', 'abrir', 'guardar'</li>" +
-                "<li><b>Estilo:</b> 'negrita', 'cursiva'</li>" +
-                "<li><b>Color:</b> 'rojo', 'azul'</li>" +
-                "<li><b>Escritura:</b> 'dictar [texto]' (ej. 'dictar hola mundo')</li>" +
-                "</ul></body></html>";
-        JOptionPane.showMessageDialog(this, helpMsg, "Ayuda de Comandos NUI", JOptionPane.INFORMATION_MESSAGE);
-    }
+    // -----------------------------------------------
 
     private void saveFileAs() {
         JFileChooser fileChooser = new JFileChooser();
-        if (fileChooser.showSaveDialog(this) == JFileChooser.APPROVE_OPTION) {
+        int option = fileChooser.showSaveDialog(this);
+        if (option == JFileChooser.APPROVE_OPTION) {
             currentFile = fileChooser.getSelectedFile();
             if (!currentFile.getName().toLowerCase().endsWith(".txt")) {
                 currentFile = new File(currentFile.getAbsolutePath() + ".txt");
             }
+            // --- MODIFICADO: Usamos la versión con progreso ---
             saveFileWithProgress();
         }
     }
 
     // ===========================================================================
-    // TU COMPONENTE PROGRESS LABEL (Mantenido intacto)
+    // --- NUEVO: CLASE ProgressLabel (Requisito: Componente visual propio) ---
     // ===========================================================================
     public static class ProgressLabel extends JPanel {
+
+        // Requisito: Estados internos
         public enum State {
             IDLE, WORKING, DONE, ERROR
         }
@@ -547,16 +539,23 @@ public class EditorTextoGUI extends JFrame implements NuiListener {
         private State currentState;
 
         public ProgressLabel() {
+            // Requisito: Texto y barra integrados (FlowLayout los pone juntos)
             super(new FlowLayout(FlowLayout.LEFT, 10, 0));
+
             textLabel = new JLabel("Listo");
+            // Requisito: Propiedades configurables (configuración inicial)
             progressBar = new JProgressBar(0, 100);
             progressBar.setPreferredSize(new Dimension(150, 15));
-            progressBar.setVisible(false);
+            progressBar.setStringPainted(true);
+            progressBar.setVisible(false); // Inicialmente oculto
+
             add(textLabel);
             add(progressBar);
+
             setState(State.IDLE);
         }
 
+        // Requisito: Propiedades configurables (Setters)
         public void setStatusText(String text) {
             textLabel.setText(text);
         }
@@ -565,6 +564,7 @@ public class EditorTextoGUI extends JFrame implements NuiListener {
             progressBar.setValue(value);
         }
 
+        // Requisito: Aspecto personalizable (Estilos según estado)
         public void setState(State state) {
             this.currentState = state;
             switch (state) {
@@ -576,13 +576,13 @@ public class EditorTextoGUI extends JFrame implements NuiListener {
                 case WORKING:
                     progressBar.setVisible(true);
                     progressBar.setValue(0);
-                    textLabel.setForeground(new Color(50, 150, 250)); // Azul
+                    textLabel.setForeground(Color.BLUE); // Personalización de color
                     break;
                 case DONE:
                     progressBar.setVisible(true);
                     progressBar.setValue(100);
                     textLabel.setText("Completado");
-                    textLabel.setForeground(new Color(0, 150, 0)); // Verde
+                    textLabel.setForeground(new Color(0, 150, 0)); // Verde oscuro
                     break;
                 case ERROR:
                     progressBar.setVisible(true);
@@ -592,16 +592,22 @@ public class EditorTextoGUI extends JFrame implements NuiListener {
             }
         }
     }
+    // ===========================================================================
 
     public static void main(String[] args) {
         SwingUtilities.invokeLater(() -> {
             try {
                 UIManager.setLookAndFeel(new FlatDarculaLaf());
-                // Personalizaciones FlatLaf
                 UIManager.put("Button.arc", 8);
                 UIManager.put("Component.arc", 8);
+                UIManager.put("TextComponent.arc", 8);
+                UIManager.put("TabbedPane.tabHeight", 30);
+                UIManager.put("TitlePane.unifiedBackground", false);
+                UIManager.put("OptionPane.buttonFont", UIManager.getFont("Label.font").deriveFont(Font.BOLD, 12));
+
             } catch (UnsupportedLookAndFeelException ex) {
-                System.err.println("FlatLaf no iniciado");
+                System.err.println("Failed to initialize FlatLaf");
+                ex.printStackTrace();
             }
             new EditorTextoGUI().setVisible(true);
         });
